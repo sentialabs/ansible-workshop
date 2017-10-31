@@ -1,0 +1,288 @@
+---
+- hosts: talent
+  become: no
+  ## Include roles, if applicable
+  roles: []
+  # You can define playbook wide vars here, if you want... Variables are not necesarry, but are preferred for readability.
+  vars:
+    backup_dir: "{{ ansible_env.HOME }}/backups"
+    wp_options:
+      siteurl: http://klaut-solutions.nl
+      home: http://klaut-solutions.nl
+      blogname: Klaut solutions
+      blogdescription: Experts in cloud management
+    wp_theme: plum
+  tasks:
+    #
+    # Apache as webserver
+    #
+    - name: Install Apache
+      yum: name=httpd state=installed
+      become: yes
+
+    #
+    # MySQL as database server
+    #
+    - name: Install MySQL
+      yum: name=mariadb-server state=installed
+      become: yes
+
+    #
+    # MySQL-python is required by ansible to manage MySQL resources
+    #
+    - name: Install MySQL-python
+      yum: name=MySQL-python state=installed
+      become: yes
+
+    #
+    # Install repo which hosts PHP7 packages
+    #
+    - name: Install IUS repo for PHP 7
+      yum: name=https://centos7.iuscommunity.org/ius-release.rpm state=installed
+      become: yes
+
+    #
+    # Remove conflicting packages before PHP7 install
+    #
+    - name: Remove any conflicting packages
+      yum: name=php-* state=absent
+      become: yes
+
+    #
+    # Install PHP7 packages required to run wordpress site
+    #
+    - name: Install PHP 7
+      yum: name="{{ item }}" state=installed
+      with_items:
+        - php70u
+        - php70u-pdo
+        - php70u-mysqlnd
+        - php70u-opcache
+        - php70u-xml
+        - php70u-mcrypt
+        - php70u-gd
+        - php70u-devel
+        - php70u-intl
+        - php70u-mbstring
+        - php70u-bcmath
+        - php70u-json
+        - php70u-iconv
+      tags:
+        - package
+      become: yes
+      register: php_install
+
+    #
+    # Ansible is idempotent.
+    # Idempotency:
+    # An operation is idempotent if the result of performing it once is exactly the same as the result of performing it repeatedly without any intervening actions.
+    # http://docs.ansible.com/ansible/latest/glossary.html
+    # Running this playbook again will not show any changes on above tasks
+    #
+
+    #
+    # START CHALLANGE 2: FILL IN THE BLANKS
+    #
+
+
+    #
+    # Make sure apache is running and enabled at boot
+    #
+    - name: Start Apache service
+      service: name=httpd state= enabled=
+      become: yes
+
+    #
+    # Make sure MySQL is running and enabled at boot
+    #
+    - name: Start MySQL service
+      service: name=mariadb state= enabled=
+      become: yes
+      tags:
+        - mysql
+
+    #
+    # wordpress requires a database in order to store data
+    #
+    - name: Create a new database for web
+      mysql_db:
+        name: web
+        state:
+      become: yes
+      tags:
+        - mysql
+
+    #
+    # wordpress requires a database user in order to connect to the database
+    #
+    - name: Create mysql_user for wordpress
+      mysql_user:
+        name:
+        password:
+        priv: 'web.*:ALL'
+        state:
+      become: yes
+      tags:
+        - mysql
+
+    #
+    # END OF CHALLENGE 2
+    #
+
+    #
+    # Create a user that will run wordpress instance and control wp-cli
+    #
+    - name: Create user for wordpress
+      user: name=web state=present home=/var/www/html shell=/bin/bash
+      become: yes
+
+    #
+    # Change owner and group on webroot
+    #
+    - name: Set permissions
+      file: name=/var/www/html owner=web group=web
+      become: yes
+
+    #
+    # Use wp-cli to control wordpress instances.
+    # We prefer CLI over GUI
+    #
+    - name: Download file wp-cli
+      get_url:
+        url: https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+        dest: /usr/local/bin/wp
+        owner: web
+        group: web
+        mode: 0775
+      become: yes
+
+    #
+    # With this check can verify if wordpress is installed
+    #
+    - name: Check wp core version
+      command: /usr/local/bin/wp core version
+      become: True
+      become_user: web
+      always_run: yes
+      ignore_errors: yes
+      failed_when: no
+      register: check_wp_core_version
+      tags:
+        - wp
+
+    #
+    # debug
+    #
+    - name: debug check_wp_core_version
+      debug: msg="{{ check_wp_core_version }}"
+      tags:
+        - wp
+
+    #
+    # Download wordpress package using wp-cli
+    #
+    - name: Download wordpress as web user using wp cli
+      command: /usr/local/bin/wp core download
+      when: check_wp_core_version.stdout != '4.8.2'
+      become: True
+      become_user: web
+      tags:
+        - wp_core_download
+        - wp
+
+    #
+    # Check if init wp-config exists
+    #
+    - name: check existence of wp-config.php
+      stat:
+        path: wp-config.php
+      register: stat_wp_config
+      become: True
+      become_user: web
+      tags:
+        - wp
+
+    #
+    # Configure wp-config
+    #
+    - name: Config wordpress db as web user using wp cli
+      command: /usr/local/bin/wp core config --dbname=web --dbuser=web --dbpass=W@rdPr33ss --dbhost=localhost --dbprefix=wp_ --force
+      become: True
+      become_user: web
+      tags:
+        - wp_core_config
+        - wp
+
+    #
+    # Install wordpress
+    #
+    - name: Install wordpress as web user using wp cli
+      command: /usr/local/bin/wp core install --url="klaut-solutions.nl"  --title="klaut-solutions.nl" --admin_user="admin" --admin_password="your_password" --admin_email="root@localhost.com"
+      become: True
+      become_user: web
+      tags:
+        - wp_core_install
+        - wp
+
+    #
+    # Configure site defaults
+    #
+    - name: Set site url
+      command: "/usr/local/bin/wp option update {{ item.key }} '{{ item.value }}'"
+      become: True
+      become_user: web
+      with_dict: "{{ wp_options }}"
+      tags:
+        - wp_options
+        - wp
+
+
+    #
+    # START CHALLENGE 3.
+    #
+
+    # CHALLENGE: Create a task to install and activate a theme
+    # 3.1
+
+
+    # CHALLENGE: Create a fact with your external IP
+    # 3.2
+
+
+    # Let's store that variable in a file for a later task. The variable's name in this example is "external_ip" and we only want the stdout from this var.
+    # If you registered your var under a different name, than you need to modify this below.
+    # 3.3
+    - name: Create a file with your external IP myip.txt
+      copy:
+        dest: /tmp/myip.txt
+        content: "{{ external_ip.stdout }}"
+      when: external_ip is defined
+
+    # https://developer.wordpress.org/cli/commands/post/create/
+    # 3.3
+
+
+    #
+    # END CHALLENGE 3.
+    #
+
+    #
+    # START CHALLENGE 4.
+    #
+
+    # CHALLENGE: Create a directory to store your backups
+    # 4.1
+
+    # CHALLENGE: Create a backup archive of your document root
+    # 4.2
+
+    # CHALLENGE: create a backup of your mysql database
+    # 4.3
+
+    #
+    # END CHALLENGE 4.
+    #
+
+    #
+    # IF you made it this far you can call yourself ansible master!
+    #
