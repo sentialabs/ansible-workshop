@@ -1,0 +1,200 @@
+---
+- hosts: all
+  become: no
+  ## Include roles, if applicable
+  roles:
+  # You can define playbook wide vars here, if you want... Variables are not necesarry, but are preferred for readability.
+  vars:
+    backup_dir: "{{ ansible_env.HOME }}/backups"
+    wp_options:
+      siteurl: http://klaut-solutions.nl
+      home: http://klaut-solutions.nl
+      blogname: Klaut solutions
+      blogdescription: Experts in cloud management
+    wp_theme: plum
+
+  ## tasks outside the scope of this role
+  tasks:
+    - name: Install Apache
+      yum: name=httpd state=installed
+      become: yes
+
+    - name: Install MySQL
+      yum: name=mariadb-server state=installed
+      become: yes
+
+    - name: Install MySQL-python
+      yum: name=MySQL-python state=installed
+      become: yes
+
+    # https://ius.io/GettingStarted/
+    - name: Install IUS repo for PHP 7
+      yum: name=https://centos7.iuscommunity.org/ius-release.rpm state=installed
+      become: yes
+
+    - name: Install PHP 7
+      yum: name="{{ item }}" state=installed
+      with_items:
+        - php70u
+        - php70u-pdo
+        - php70u-mysqlnd
+        - php70u-opcache
+        - php70u-xml
+        - php70u-mcrypt
+        - php70u-gd
+        - php70u-devel
+        # - php70u-mysql
+        - php70u-intl
+        - php70u-mbstring
+        - php70u-bcmath
+        - php70u-json
+        - php70u-iconv
+      tags:
+        - package
+      become: yes
+
+  ### Ansible is idempotent. This means the state will be checked on each run
+  ### and only change when need to.
+  ### Run the playbook again
+
+  ## CHALLENGE: Fill in the blanks
+  # 2
+
+    - name: Start Apache service
+      service: name=httpd state= enabled=
+      become: yes
+
+    - name: Start MySQL service
+      service: name=mariadb state= enabled=
+      become: yes
+      tags:
+        - mysql
+
+    - name: Create a new database for web
+      mysql_db:
+        name: web
+        state:
+      become: yes
+      tags:
+        - mysql
+
+    - name: Create mysql_user for wordpress
+      mysql_user:
+        name:
+        password:
+        priv: 'web.*:ALL'
+        state:
+      become: yes
+      tags:
+        - mysql
+  
+    # END OF CHALLANGE 2
+    # We want to use CLI over browser
+    - name: Create user for wordpress
+      user: name=web state=present home=/var/www/html shell=/bin/bash
+      become: yes
+
+    - name: Set permissions
+      file: name=/var/www/html owner=web group=web
+      become: yes
+
+    - name: Download file wp-cli
+      get_url:
+        url: https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+        dest: /usr/local/bin/wp
+        owner: web
+        group: web
+        mode: 0775
+      become: yes
+
+    - name: Check wp core version
+      command: /usr/local/bin/wp core version
+      become: True
+      become_user: web
+      always_run: yes
+      ignore_errors: yes
+      failed_when: no
+      register: check_wp_core_version
+      tags:
+        - wp
+
+    - name: debug check_wp_core_version
+      debug: msg="{{ check_wp_core_version }}"
+      tags:
+        - wp
+
+    - name: Download wordpress as web user using wp cli
+      command: /usr/local/bin/wp core download
+      when: check_wp_core_version.stdout != '4.8.2'
+      become: True
+      become_user: web
+      tags:
+        - wp_core_download
+        - wp
+
+    - name: check existence of wp-config.php
+      stat:
+        path: wp-config.php
+      register: stat_wp_config
+      become: True
+      become_user: web
+      tags:
+        - wp
+
+    - name: Config wordpress db as web user using wp cli
+      command: /usr/local/bin/wp core config --dbname=web --dbuser=web --dbpass=W@rdPr33ss --dbhost=localhost --dbprefix=wp_ --force
+      become: True
+      become_user: web
+      tags:
+        - wp_core_config
+        - wp
+
+    - name: Install wordpress as web user using wp cli
+      command: /usr/local/bin/wp core install --url="klaut-solutions.nl"  --title="klaut-solutions.nl" --admin_user="admin" --admin_password="your_password" --admin_email="root@localhost.com"
+      become: True
+      become_user: web
+      tags:
+        - wp_core_install
+        - wp
+
+    - name: Set site url
+      command: "/usr/local/bin/wp option update {{ item.key }} '{{ item.value }}'"
+      become: True
+      become_user: web
+      with_dict: "{{ wp_options }}"
+      tags:
+        - wp_options
+        - wp
+
+    # CHALLENGE: Create a task to install theme
+    # 3.1
+
+
+    # CHALLENGE: Create a fact with your external IP
+    # 3.2
+
+
+    # Let's store that variable in a file for a later task. The variable's name in this example is "external_ip" and we only want the stdout from this var.
+    # If you registered your var under a different name, than you need to modify this below.
+    # 3.3
+    - name: Create a file with your external IP myip.txt
+      copy:
+        dest: /tmp/myip.txt
+        content: "{{ external_ip.stdout }}"
+      when: external_ip is defined
+
+    # https://developer.wordpress.org/cli/commands/post/create/
+    # 3.3
+
+
+    # CHALLENGE: Create a directory to store your backups
+    # 4.1
+
+
+
+    # CHALLENGE: Create a backup archive of your document root
+    #4.2
+
+
+    # CHALLENGE: create a backup of your mysql database
+    #4.3
