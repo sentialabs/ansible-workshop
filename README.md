@@ -5,13 +5,13 @@ Ansible Workshop 2017
 
 Deze repository is gemaakt voor de Ansible workshop 2017, gegeven door Mark, Martin en Jona van [Sentia](https://sentia.com).
 
-De opdracht kan hier worden gevonden: [https://github.com/sentialabs/ansible-workshop/ASSIGNMENT.md](https://github.com/sentialabs/ansible-workshop/ASSIGNMENT.md).
+De opdracht kan hier worden gevonden: [https://github.com/sentialabs/ansible-workshop/blob/master/ASSIGNMENT.md](https://github.com/sentialabs/ansible-workshop/blob/master/ASSIGNMENT.md).
 
 #### English
 
 This repository is created for the Ansible workshop 2017, given by Mark, Martin and Jona from [Sentia](https://sentia.com).
 
-The assignment can be found here: [https://github.com/sentialabs/ansible-workshop/ASSIGNMENT.md](https://github.com/sentialabs/ansible-workshop/ASSIGNMENT.md). The assignment is in Dutch.
+The assignment can be found here: [https://github.com/sentialabs/ansible-workshop/blob/master/ASSIGNMENT.md](https://github.com/sentialabs/ansible-workshop/blob/master/ASSIGNMENT.md). The assignment is in Dutch.
 
 License
 -------
